@@ -1,3 +1,15 @@
+## My changes
+
+Swapped the synthetic data for a real dataset, [Sarcasm_News_Headline](https://huggingface.co/datasets/raquiba/Sarcasm_News_Headline) from Hugging Face. The model now guesses whether a headline is from The Onion or HuffPost.
+
+- `train_model.py` loads the dataset, does an 80/20 split and trains TF-IDF + logistic regression instead of the random forest
+- `evaluate_model.py` scores on the held-out split (F1 around 0.85)
+- MLflow logs to `sqlite:///mlflow.db` since newer mlflow won't use `./mlruns` anymore
+- added `datasets` to requirements
+- workflow: Python 3.12, checkout/setup-python bumped to v7, `contents: write` so it can push, commits under my account
+
+Fun one: "senate passes infrastructure bill" got a 0.49 chance of being Onion.
+
 # Using GitHub Actions for Model Training and Versioning
 
 This repository demonstrates how to use GitHub Actions to automate the process of training a machine learning model, storing the model, and versioning it. This allows you to easily update and improve your model in a collaborative environment.
