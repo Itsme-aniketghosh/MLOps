@@ -1,7 +1,7 @@
 apache-airflow
-dvc[gs]
+apache-airflow-providers-smtp
 flask
+requests
 scikit-learn
-scipy
 pandas
 numpy

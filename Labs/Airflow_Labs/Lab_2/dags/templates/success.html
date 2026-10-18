@@ -3,41 +3,45 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pipeline Success | MLOps Platform</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+    <title>Wine Model Ready | Lab 2</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Playfair+Display:wght@600&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-color: #f8fafc;
+            --bg-color: #faf5f0;
             --card-bg: #ffffff;
-            --success-green: #10b981;
-            --text-main: #1e293b;
-            --text-muted: #64748b;
+            --wine: #7b1e3a;
+            --wine-light: #f6e7ec;
+            --text-main: #2b1b1f;
+            --text-muted: #7a6a6e;
         }
         body {
             font-family: 'Inter', sans-serif;
             background-color: var(--bg-color);
             color: var(--text-main);
             margin: 0;
+            padding: 16px;
             display: flex;
             justify-content: center;
             align-items: center;
             min-height: 100vh;
+            box-sizing: border-box;
         }
         .container {
             width: 100%;
-            max-width: 500px;
+            max-width: 520px;
             background: var(--card-bg);
             border-radius: 16px;
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
+            box-shadow: 0 10px 25px rgba(123, 30, 58, 0.08);
             padding: 40px;
             text-align: center;
-            border-top: 8px solid var(--success-green);
+            border-top: 8px solid var(--wine);
+            box-sizing: border-box;
         }
         .icon-circle {
             width: 80px;
             height: 80px;
-            background: #ecfdf5;
-            color: var(--success-green);
+            background: var(--wine-light);
+            color: var(--wine);
             border-radius: 50%;
             display: flex;
             justify-content: center;
@@ -45,11 +49,21 @@
             margin: 0 auto 20px;
             font-size: 40px;
         }
-        h1 { margin: 0 0 10px; font-weight: 600; color: var(--text-main); }
-        p { color: var(--text-muted); margin-bottom: 30px; }
-        
+        h1 { margin: 0 0 10px; font-family: 'Playfair Display', serif; color: var(--wine); }
+        p { color: var(--text-muted); margin-bottom: 24px; }
+
+        .scores { display: flex; gap: 10px; margin-bottom: 20px; }
+        .score {
+            flex: 1;
+            background: var(--wine-light);
+            border-radius: 12px;
+            padding: 14px 6px;
+        }
+        .score-value { font-size: 22px; font-weight: 600; color: var(--wine); }
+        .score-label { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; }
+
         .metadata-grid {
-            background: #f1f5f9;
+            background: #f7f2ee;
             border-radius: 12px;
             padding: 20px;
             text-align: left;
@@ -58,11 +72,12 @@
         .meta-item {
             display: flex;
             justify-content: space-between;
+            gap: 12px;
             margin-bottom: 8px;
             font-size: 14px;
         }
         .meta-label { font-weight: 600; color: var(--text-muted); }
-        .meta-value { color: var(--text-main); font-family: monospace; }
+        .meta-value { color: var(--text-main); font-family: monospace; word-break: break-all; text-align: right; }
 
         .btn-group { display: flex; gap: 10px; }
         .btn {
@@ -76,49 +91,69 @@
             text-decoration: none;
             font-size: 14px;
         }
-        .btn-primary { background: var(--success-green); color: white; }
-        .btn-secondary { background: #e2e8f0; color: var(--text-main); }
+        .btn-primary { background: var(--wine); color: white; }
+        .btn-secondary { background: #ede3df; color: var(--text-main); }
         .btn:hover { opacity: 0.9; }
+        .footer { margin-top: 24px; font-size: 12px; color: var(--text-muted); }
+        .footer a { color: var(--wine); }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="icon-circle">✓</div>
-        <h1>Pipeline Success</h1>
-        <p>The model training and deployment cycle completed successfully.</p>
+        <div class="icon-circle">🍷</div>
+        <h1>Sommelier Model Ready</h1>
+        <p>The wine quality classifier was retrained and evaluated on held-out wines.</p>
+
+        {% if metrics %}
+        <div class="scores">
+            <div class="score">
+                <div class="score-value">{{ metrics.accuracy }}</div>
+                <div class="score-label">Accuracy</div>
+            </div>
+            <div class="score">
+                <div class="score-value">{{ metrics.f1 }}</div>
+                <div class="score-label">F1 (good)</div>
+            </div>
+            <div class="score">
+                <div class="score-value">{{ metrics.roc_auc }}</div>
+                <div class="score-label">ROC AUC</div>
+            </div>
+        </div>
+        {% else %}
+        <p><em>No metrics file found yet.</em></p>
+        {% endif %}
 
         <div class="metadata-grid">
+            <div class="meta-item">
+                <span class="meta-label">DAG</span>
+                <span class="meta-value">{{ dag_id }}</span>
+            </div>
             <div class="meta-item">
                 <span class="meta-label">Run ID</span>
                 <span class="meta-value">{{ run_id }}</span>
             </div>
             <div class="meta-item">
                 <span class="meta-label">State</span>
-                <span class="meta-value" style="color: var(--success-green);">{{ state }}</span>
+                <span class="meta-value" style="color: var(--wine);">{{ state }}</span>
             </div>
             <div class="meta-item">
-                <span class="meta-label">Logical Date</span>
-                <span class="meta-value">{{ logical_date }}</span>
+                <span class="meta-label">Finished</span>
+                <span class="meta-value">{{ end_date }}</span>
             </div>
+            {% if metrics %}
             <div class="meta-item">
-                <span class="meta-label">System Time</span>
-                <span class="meta-value" id="current-time"></span>
+                <span class="meta-label">Test wines</span>
+                <span class="meta-value">{{ metrics.test_size }} ({{ metrics.good_wines_predicted }} flagged good)</span>
             </div>
+            {% endif %}
         </div>
 
         <div class="btn-group">
             <a href="http://localhost:8080" class="btn btn-primary">Open Airflow</a>
-            <button onclick="window.print()" class="btn btn-secondary">Print Report</button>
+            <a href="/metrics" class="btn btn-secondary">Raw Metrics</a>
         </div>
-    </div>
 
-    <script>
-        function updateTime() {
-            const now = new Date();
-            document.getElementById('current-time').textContent = now.toLocaleTimeString();
-        }
-        setInterval(updateTime, 1000);
-        updateTime();
-    </script>
+        <div class="footer">Aniket Ghosh · <a href="mailto:ghosh.anik@northeastern.edu">ghosh.anik@northeastern.edu</a></div>
+    </div>
 </body>
 </html>

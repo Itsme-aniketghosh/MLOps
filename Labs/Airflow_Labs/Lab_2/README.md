@@ -1,104 +1,122 @@
-# Airflow Lab Instructions and Description
+# Airflow Lab 2: Red Wine Quality Pipeline
 
-## Introduction
-This document provides a detailed breakdown of the two DAGs (`Airflow_Lab2` and `Airflow_Lab2_Flask`) along with explanations of each function within the DAG files. These explanations aim to clarify the purpose and functionality of each task and function in the Airflow workflows.
+**Author:** Aniket Ghosh (ghosh.anik@northeastern.edu)
 
+## Problem Statement
+A small winery wants a quick first check on new batches before they go to the tasting panel. Given 11 lab measurements of a red wine (acidity, residual sugar, sulphates, alcohol, etc.), can we predict whether tasters will rate it **good** (quality score of 7 or higher out of 10)?
 
-Watch the tutorial video for this lab at [Airflow Lab2 Tutorial Video](https://youtu.be/LwBFOyfN5TY)
+Only about 13.5% of wines in the data are "good", so this is an imbalanced binary classification problem. The pipeline retrains the model weekly with Airflow and serves a small Flask page that shows whether the latest run worked and how the model scored.
+
+## Dataset
+[Wine Quality (red)](https://archive.ics.uci.edu/dataset/186/wine+quality) from the UCI Machine Learning Repository (Cortez et al., 2009). 1,599 Portuguese "Vinho Verde" red wines, semicolon separated, stored at `dags/data/winequality-red.csv`.
+
+| Column | Description |
+|---|---|
+| fixed acidity ... alcohol | 11 physicochemical measurements |
+| quality | Median taster score (0-10), turned into the target `quality >= 7` |
+
+## What changed from the original lab
+- New dataset and problem (wine quality instead of ad clicks)
+- Added a `validate_data` step that checks for nulls and bad scores and drops duplicate rows (240 of them)
+- Stratified split and a single `StandardScaler` instead of stacking two scalers
+- `RandomForestClassifier` with `class_weight="balanced"` instead of logistic regression
+- `evaluate_model` reports accuracy, F1 and ROC AUC, saves `metrics.json` and pushes the metrics to XCom
+- Flask page shows the metrics, has a `/metrics` JSON endpoint, and shows the status note on the failure page
+- Flask app gets a JWT from `/auth/token` before calling the API (Airflow 3 rejects basic auth with a 401), and skips starting a second server if one is already on port 5555
+- DAGs renamed, scheduled weekly, owner set to me, wine-colored templates
 
 ## Prerequisites
-Before proceeding with this lab, ensure the following prerequisites are met:
+- Docker Desktop with Docker Compose
+- The Airflow 3 `docker-compose.yaml` in this folder (same one used in Lab 1)
+- Basic understanding of Airflow DAGs and operators
 
-- Basic understanding of Apache Airflow concepts.
-- Apache Airflow installed and configured.
-- Necessary Python packages installed, including Flask.
+## Running it
+```bash
+./setup.sh
+docker compose up -d
+```
+1. Open Airflow at http://localhost:8080 (user `airflow`, password `airflow`).
+2. Unpause `Wine_Quality_Pipeline`. Unpausing starts the latest scheduled run on its own, so a manual trigger isn't needed.
+3. When it finishes it triggers `Wine_Quality_Flask`, which starts the status page on port 5555. Make sure the worker exposes `5555:5555` in the compose file, then open http://localhost:5555.
 
+## Airflow Email Configuration (optional)
+The `send_email` task in `main.py` is commented out because it needs SMTP set up.
 
-## Airflow Email Configuration
-
-### Sign in with app passwords
-Follow the instruction provided here: [link](https://support.google.com/accounts/answer/185833) and get your smtp password
-
-### Adding SMTP Information to airflow.cfg
-
-To configure Airflow to send emails, you need to add SMTP information to the `airflow.cfg` file. Follow these steps:
-
-1. Locate the `airflow.cfg` file in your Airflow installation directory.
-2. Open the file using a text editor.
-3. Search for the `[smtp]` section in the configuration file.
-4. Update the following parameters with your SMTP server information:
-   - `smtp_host`: Hostname of the SMTP server.
-   - `smtp_starttls`: Set it to `True` if your SMTP server uses TLS.
-   - `smtp_ssl`: Set it to `True` if your SMTP server uses SSL.
-   - `smtp_user`: Your SMTP username.
-   - `smtp_password`: Your SMTP password.
-   - `smtp_port`: Port number of the SMTP server (e.g., 587 for TLS, 465 for SSL).
-5. Save the changes to the `airflow.cfg` file.
-
-for our lab assuming you have a gmail account you can use the following setting:
+1. Create a Gmail app password: [instructions](https://support.google.com/accounts/answer/185833)
+2. In `config/airflow.cfg`, under `[smtp]`, set:
    - smtp_host = smtp.gmail.com
    - smtp_starttls = True
    - smtp_ssl = False
    - smtp_user = YOUREMAIL@gmail.com
-   - smtp_password = Enter your password generated above
+   - smtp_password = the app password from step 1
    - smtp_port = 587
    - smtp_mail_from = YOUREMAIL@gmail.com
    - smtp_timeout = 30
    - smtp_retry_limit = 5
-
-After updating the SMTP information, Airflow will use the configured SMTP server to send email notifications.
-
+3. Uncomment `send_email` in `main.py` and add it after `evaluate_model_task` in the dependency chain. It emails the metrics to ghosh.anik@northeastern.edu.
 
 ## DAG Structure
 
-### `Airflow_Lab2`
-This DAG orchestrates a machine learning pipeline and notification system. Let's break down each function within this DAG:
+### `Wine_Quality_Pipeline` (dags/main.py)
+```
+start_pipeline >> load_data_task >> validate_data_task >> data_preprocessing_task
+    >> build_save_model_task >> evaluate_model_task >> trigger_flask_dashboard
+```
 
-1. **`notify_success(context)` and `notify_failure(context)` Functions:**
-   - These functions define email notifications for task success and failure, respectively. They utilize the `EmailOperator` to send emails with predefined content and subject to a specified recipient (in this case, `rey.mhmmd@gmail.com`).
+| Task | What it does |
+|---|---|
+| `start_pipeline` | BashOperator that echoes the run date |
+| `load_data_task` | Reads the CSV, cleans column names, pickles the dataframe |
+| `validate_data_task` | Fails if there are nulls or scores outside 0-10, drops duplicates |
+| `data_preprocessing_task` | Builds the binary target, 75/25 stratified split, scales features |
+| `build_save_model_task` | Trains a 200-tree random forest and saves `wine_rf.sav` |
+| `evaluate_model_task` | Scores the model on the test set, writes `metrics.json`, returns metrics to XCom |
+| `trigger_flask_dashboard` | Triggers `Wine_Quality_Flask` with `ALL_DONE`, so the page comes up even if training fails |
 
-2. **`default_args` Dictionary:**
-   - This dictionary defines default arguments for the DAG, including the start date and the number of retries in case of task failure.
+Each task passes the path of its pickle file to the next one through XCom (`task.output`).
 
-3. **`dag` Definition:**
-   - This section creates the main DAG instance (`Airflow_Lab2`) with various parameters such as description, schedule interval, catchup behavior, and tags.
-   
-4. **`owner_task` BashOperator:**
-   - This task echoes `1` and is assigned to an owner (`Ramin Mohammadi`). It represents a simple demonstration task with a linked owner.
+`default_args` set the owner to Aniket Ghosh, one retry after a minute, and a start date of 2025-01-01. The DAG runs `@weekly` with `catchup=False`.
 
-5. **`send_email` EmailOperator:**
-   - This task sends a notification email upon DAG completion. It utilizes the `notify_success` and `notify_failure` functions as callbacks for success and failure, respectively.
+### `Wine_Quality_Flask` (dags/Flask_API.py)
+Not scheduled; only runs when the pipeline triggers it.
 
-6. **PythonOperator Tasks:**
-   - These tasks execute Python functions (`load_data`, `data_preprocessing`, `separate_data_outputs`, `build_model`, `load_model`) representing different stages of a machine learning pipeline. They perform data loading, preprocessing, model building, and model loading tasks.
+| Piece | What it does |
+|---|---|
+| `get_latest_run_info()` | Calls the Airflow REST API (`/api/v2/dags/Wine_Quality_Pipeline/dagRuns`) for the latest run |
+| `/` | Redirects to `/success` or `/failure` based on that run's state |
+| `/success` | Shows run info plus accuracy, F1 and ROC AUC from `metrics.json` |
+| `/failure` | Shows the state and a note (for example, still running or API error) |
+| `/metrics` | Raw metrics as JSON |
+| `/health` | Returns `ok` |
+| `start_flask_dashboard` | PythonOperator that runs the Flask app on port 5555 |
 
-7. **`TriggerDagRunOperator` Task:**
-   - This task triggers the `Airflow_Lab2_Flask` DAG upon successful completion of the main DAG. It ensures that the Flask API is launched after the machine learning pipeline completes successfully.
+## Results
+From a local run of the same code (random_state = 7, 340 test wines):
 
-### `Airflow_Lab2_Flask`
-This DAG manages the Flask API's lifecycle and consists of the following function:
+| Metric | Score |
+|---|---|
+| Accuracy | 0.877 |
+| F1 (good class) | 0.571 |
+| ROC AUC | 0.913 |
 
-1. **`check_dag_status()` Function:**
-   - This function queries the status of the last DAG run (`Airflow_Lab2`). It returns `True` if the DAG run was successful, and `False` otherwise.
+Accuracy looks high partly because most wines are not good; F1 on the good class and ROC AUC are the more useful numbers here.
 
-2. **`handle_api_request()` Function:**
-   - This function handles API requests and redirects users to `/success` or `/failure` routes based on the status of the last DAG run.
+### Screenshots
+Pipeline run, all 7 tasks green:
 
-3. **Flask Routes and HTML Templates:**
-   - The Flask routes (`/api`, `/success`, `/failure`) define endpoints for accessing the API and displaying success or failure pages. These routes render HTML templates (`success.html`, `failure.html`) with appropriate messages.
+![Pipeline run](assets/pipeline_run.png)
 
-4. **`start_flask_app()` Function:**
-   - This function starts the Flask server, enabling users to access the API endpoints.
+`evaluate_model_task` log with the test metrics:
 
-5. **`start_flask_API` PythonOperator:**
-   - This task executes the `start_flask_app()` function to initiate the Flask server. It represents the starting point for the Flask API's lifecycle.
+![Evaluate model log](assets/evaluate_model_log.png)
+
+`Wine_Quality_Flask` triggered by the pipeline:
+
+![Flask DAG run](assets/flask_dag_run.png)
+
+Dashboard at http://localhost:5555:
+
+![Flask dashboard](assets/flask_dashboard.png)
 
 ## Conclusion
-In this project, we've constructed a robust workflow using Apache Airflow to orchestrate a machine learning pipeline and manage a Flask API for monitoring purposes. The Airflow_Lab2 DAG coordinates various tasks, including data loading, preprocessing, model building, and email notification upon completion. By leveraging PythonOperators and BashOperator, we've encapsulated each step of the machine learning process, allowing for easy scalability and maintenance.
-
-Additionally, the integration of email notifications enhances the workflow's visibility, providing stakeholders with timely updates on task success or failure. This ensures proactive monitoring and quick response to any issues that may arise during pipeline execution.
-
-Furthermore, the Airflow_Lab2_Flask DAG facilitates the management of a Flask API, enabling users to access endpoints for checking the status of the machine learning pipeline. By querying the last DAG run status, the API delivers real-time feedback, empowering users to make informed decisions based on the pipeline's performance.
-
-Overall, this project demonstrates the power of Apache Airflow in orchestrating complex workflows and integrating external systems seamlessly. By following the provided instructions and understanding the workflow's structure, users can leverage Airflow to streamline their machine learning pipelines and enhance operational efficiency.
-
+The pipeline takes raw lab measurements through validation, preprocessing, training and evaluation as separate Airflow tasks, then brings up a Flask page reporting the result. Splitting the steps makes failures easy to spot in the Airflow UI (a bad dataset fails at `validate_data_task`, not halfway through training), and the weekly schedule means a new batch of wine data only needs to replace the CSV.

@@ -3,39 +3,43 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pipeline Failure | MLOps Platform</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+    <title>Wine Run Not Ready | Lab 2</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&family=Playfair+Display:wght@600&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-color: #fff1f2;
+            --bg-color: #f3eeee;
             --card-bg: #ffffff;
-            --error-red: #e11d48;
-            --text-main: #1e293b;
-            --text-muted: #64748b;
+            --cork: #a16207;
+            --error-red: #b91c1c;
+            --text-main: #2b1b1f;
+            --text-muted: #7a6a6e;
         }
         body {
             font-family: 'Inter', sans-serif;
             background-color: var(--bg-color);
             margin: 0;
+            padding: 16px;
             display: flex;
             justify-content: center;
             align-items: center;
             min-height: 100vh;
+            box-sizing: border-box;
         }
         .container {
             width: 100%;
             max-width: 500px;
             background: var(--card-bg);
             border-radius: 16px;
-            box-shadow: 0 10px 25px rgba(225, 29, 72, 0.1);
+            box-shadow: 0 10px 25px rgba(185, 28, 28, 0.08);
             padding: 40px;
             text-align: center;
             border-top: 8px solid var(--error-red);
+            box-sizing: border-box;
         }
         .icon-circle {
             width: 80px;
             height: 80px;
-            background: #fff1f2;
+            background: #fdf0f0;
             color: var(--error-red);
             border-radius: 50%;
             display: flex;
@@ -45,12 +49,20 @@
             font-size: 40px;
             font-weight: bold;
         }
-        h1 { margin: 0 0 10px; font-weight: 600; color: var(--text-main); }
-        p { color: var(--text-muted); margin-bottom: 30px; }
-        
+        h1 { margin: 0 0 10px; font-family: 'Playfair Display', serif; color: var(--text-main); }
+        p { color: var(--text-muted); margin-bottom: 24px; }
+        .note {
+            background: #fef9ec;
+            color: var(--cork);
+            border-radius: 8px;
+            padding: 10px;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
+
         .metadata-grid {
             background: #fafafa;
-            border: 1px dashed #cbd5e1;
+            border: 1px dashed #d6c8c8;
             border-radius: 12px;
             padding: 20px;
             text-align: left;
@@ -59,11 +71,12 @@
         .meta-item {
             display: flex;
             justify-content: space-between;
+            gap: 12px;
             margin-bottom: 8px;
             font-size: 14px;
         }
         .meta-label { font-weight: 600; color: var(--text-muted); }
-        .meta-value { color: var(--error-red); font-family: monospace; }
+        .meta-value { color: var(--error-red); font-family: monospace; word-break: break-all; text-align: right; }
 
         .btn-group { display: flex; flex-direction: column; gap: 10px; }
         .btn {
@@ -85,27 +98,31 @@
 <body>
     <div class="container">
         <div class="icon-circle">!</div>
-        <h1>Execution Interrupted</h1>
-        <p>The DAG <strong>{{ run_id }}</strong> encountered a critical error during execution.</p>
+        <h1>Wine Run Not Ready</h1>
+        <p>The latest <strong>{{ dag_id }}</strong> run did not finish successfully.</p>
+
+        {% if note %}
+        <div class="note">{{ note }}</div>
+        {% endif %}
 
         <div class="metadata-grid">
             <div class="meta-item">
-                <span class="meta-label">Status</span>
-                <span class="meta-value">FAILED</span>
+                <span class="meta-label">State</span>
+                <span class="meta-value">{{ state | upper }}</span>
             </div>
             <div class="meta-item">
-                <span class="meta-label">Detected At</span>
+                <span class="meta-label">Run ID</span>
+                <span class="meta-value">{{ run_id }}</span>
+            </div>
+            <div class="meta-item">
+                <span class="meta-label">Checked At</span>
                 <span class="meta-value" id="current-time"></span>
-            </div>
-            <div class="meta-item">
-                <span class="meta-label">Reference</span>
-                <span class="meta-value" style="color:#64748b">#{{ run_id[:8] }}</span>
             </div>
         </div>
 
         <div class="btn-group">
-            <a href="mailto:support@example.com?subject=Pipeline Failure: {{ run_id }}" class="btn btn-danger">Report Incident</a>
-            <a href="http://localhost:8080" class="btn btn-outline">Re-run Manually</a>
+            <a href="/" class="btn btn-danger">Check Again</a>
+            <a href="mailto:ghosh.anik@northeastern.edu?subject=Wine pipeline failed: {{ run_id }}" class="btn btn-outline">Email Aniket</a>
         </div>
     </div>
 

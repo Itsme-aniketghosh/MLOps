@@ -1,88 +1,106 @@
 # File: src/model_development.py
 import os
+import json
 import pickle
 import pandas as pd
-from sklearn.compose import make_column_transformer
-from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
+from sklearn.preprocessing import StandardScaler
 
 WORKING_DIR = "/opt/airflow/working_data"
 MODEL_DIR = "/opt/airflow/model"
 os.makedirs(WORKING_DIR, exist_ok=True)
 os.makedirs(MODEL_DIR, exist_ok=True)
 
+# a wine counts as "good" if tasters gave it 7 or more out of 10
+GOOD_WINE_THRESHOLD = 7
+METRICS_FILE = os.path.join(MODEL_DIR, "metrics.json")
+
+
 def load_data() -> str:
     """
-    Load CSV and persist raw dataframe to a pickle file.
+    Read the red wine quality CSV and pickle the raw dataframe.
     Returns path to saved file.
     """
     csv_path = os.path.join(
         os.path.dirname(os.path.dirname(__file__)),
         "data",
-        "advertising.csv",
+        "winequality-red.csv",
     )
-    df = pd.read_csv(csv_path)
+    df = pd.read_csv(csv_path, sep=";")
+    df.columns = [c.strip().replace(" ", "_") for c in df.columns]
 
     out_path = os.path.join(WORKING_DIR, "raw.pkl")
     with open(out_path, "wb") as f:
         pickle.dump(df, f)
+    print(f"Loaded {len(df)} wines with {df.shape[1]} columns")
     return out_path
 
-def data_preprocessing(file_path: str) -> str:
+
+def validate_data(file_path: str) -> str:
     """
-    Load dataframe, split, scale, and save (X_train, X_test, y_train, y_test) to pickle.
-    Returns path to saved file.
+    Basic sanity checks: no missing values, quality in range.
+    Drops duplicate rows and re-saves. Fails the task if checks don't pass.
     """
     with open(file_path, "rb") as f:
         df = pickle.load(f)
 
-    X = df.drop(
-        ["Timestamp", "Clicked on Ad", "Ad Topic Line", "Country", "City"],
-        axis=1,
-    )
-    y = df["Clicked on Ad"]
+    if df.isnull().values.any():
+        raise ValueError("Dataset has missing values")
+    if not df["quality"].between(0, 10).all():
+        raise ValueError("Quality scores outside 0-10")
+
+    before = len(df)
+    df = df.drop_duplicates()
+    print(f"Dropped {before - len(df)} duplicate rows, {len(df)} left")
+
+    out_path = os.path.join(WORKING_DIR, "validated.pkl")
+    with open(out_path, "wb") as f:
+        pickle.dump(df, f)
+    return out_path
+
+
+def data_preprocessing(file_path: str) -> str:
+    """
+    Build the binary target, do a stratified split, scale features,
+    and save (X_train, X_test, y_train, y_test) to pickle.
+    """
+    with open(file_path, "rb") as f:
+        df = pickle.load(f)
+
+    y = (df["quality"] >= GOOD_WINE_THRESHOLD).astype(int)
+    X = df.drop(columns=["quality"])
+    print(f"Good wines: {y.sum()} / {len(y)} ({y.mean():.1%})")
 
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.3, random_state=42
+        X, y, test_size=0.25, random_state=7, stratify=y
     )
 
-    num_columns = [
-        "Daily Time Spent on Site",
-        "Age",
-        "Area Income",
-        "Daily Internet Usage",
-        "Male",
-    ]
-
-    ct = make_column_transformer(
-        (MinMaxScaler(), num_columns),
-        (StandardScaler(), num_columns),
-        remainder="passthrough",
-    )
-
-    X_train_tr = ct.fit_transform(X_train)
-    X_test_tr = ct.transform(X_test)
+    scaler = StandardScaler()
+    X_train_tr = scaler.fit_transform(X_train)
+    X_test_tr = scaler.transform(X_test)
 
     out_path = os.path.join(WORKING_DIR, "preprocessed.pkl")
     with open(out_path, "wb") as f:
         pickle.dump((X_train_tr, X_test_tr, y_train.values, y_test.values), f)
     return out_path
 
-def separate_data_outputs(file_path: str) -> str:
-    """
-    Passthrough; kept so the DAG composes cleanly.
-    """
-    return file_path
 
 def build_model(file_path: str, filename: str) -> str:
     """
-    Train LR model and save to MODEL_DIR/filename. Returns model path.
+    Train a random forest and save to MODEL_DIR/filename. Returns model path.
     """
     with open(file_path, "rb") as f:
         X_train, X_test, y_train, y_test = pickle.load(f)
 
-    model = LogisticRegression()
+    # class_weight balanced since good wines are only ~13% of the data
+    model = RandomForestClassifier(
+        n_estimators=200,
+        max_depth=12,
+        class_weight="balanced",
+        random_state=7,
+    )
     model.fit(X_train, y_train)
 
     model_path = os.path.join(MODEL_DIR, filename)
@@ -91,9 +109,11 @@ def build_model(file_path: str, filename: str) -> str:
 
     return model_path
 
-def load_model(file_path: str, filename: str) -> int:
+
+def evaluate_model(file_path: str, filename: str) -> dict:
     """
-    Load saved model and test set, print score, and return first prediction as int.
+    Load the saved model, score it on the test set, write metrics.json
+    and return the metrics (ends up in XCom).
     """
     with open(file_path, "rb") as f:
         X_train, X_test, y_train, y_test = pickle.load(f)
@@ -102,8 +122,19 @@ def load_model(file_path: str, filename: str) -> int:
     with open(model_path, "rb") as f:
         model = pickle.load(f)
 
-    score = model.score(X_test, y_test)
-    print(f"Model score on test data: {score}")
-
     pred = model.predict(X_test)
-    return int(pred[0])
+    proba = model.predict_proba(X_test)[:, 1]
+
+    metrics = {
+        "accuracy": round(float(accuracy_score(y_test, pred)), 4),
+        "f1": round(float(f1_score(y_test, pred)), 4),
+        "roc_auc": round(float(roc_auc_score(y_test, proba)), 4),
+        "test_size": int(len(y_test)),
+        "good_wines_predicted": int(pred.sum()),
+    }
+    print(f"Test metrics: {metrics}")
+
+    with open(METRICS_FILE, "w") as f:
+        json.dump(metrics, f, indent=2)
+
+    return metrics
