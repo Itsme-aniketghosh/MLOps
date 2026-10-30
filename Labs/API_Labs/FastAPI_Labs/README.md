@@ -11,14 +11,36 @@ In this Lab, we will learn how to expose ML models as APIs using [FastAPI](https
 1. **FastAPI**: FastAPI is a modern, fast (high-performance), web framework for building APIs with Python based on standard Python type hints.
 2. **uvicorn**: Uvicorn is an [Asynchronous Server Gateway Interface - ASGI](https://youtu.be/vKjCkeJGbNk) web server implementation for Python. It is often used to serve FastAPI aplications.
 
+### Problem: Legendary or Mid?
+
+Every Pokémon fan has argued about whether some Pokémon is actually legendary or just mid. This lab settles it with a model: send a Pokémon's six base stats (HP, Attack, Defense, Sp. Atk, Sp. Def, Speed) to the API and it gives its verdict, `legendary` or `mid`.
+
+Dataset: [`data/pokemon.csv`](data/pokemon.csv), with stats for 800 Pokémon (Gen 1–6), 65 of them legendary ([source](https://gist.github.com/armgilles/194bcff35001e7eb53a2a8b441e8b2c6)).
+
+### Changes from the original Iris lab
+
+| File | Change |
+|---|---|
+| `data/pokemon.csv` | New dataset, replaces sklearn's built-in Iris |
+| `src/data.py` | Loads the CSV with pandas; split is stratified because legendaries are only ~8% of the data |
+| `src/train.py` | `class_weight="balanced"` for the rare class; prints a classification report on the test split |
+| `src/main.py` | `IrisData` → `PokemonStats` (6 stats), `IrisResponse` → `VerdictResponse` returning `"legendary"` / `"mid"` |
+| `src/predict.py` | Loads `model/pokemon_model.pkl` |
+| `requirements.txt` | Added `pandas` |
+
+Test-split results (`max_depth=3`): legendary recall 0.85, precision 0.46, accuracy 0.90. The model calls too many Pokémon legendary, because strong regular ones like Dragonite and the Mega forms have legendary-level stats.
+
 The workflow involves the following steps:
-1. Training a Decision Tree Classifier on Iris Dataset.
+1. Training a Decision Tree Classifier on the Pokémon stats dataset.
 2. Serving the trained model as an API using FastAPI and uvicorn.
 
 ## Setting up the lab
 
-1. Create a virtual environment(e.g. **fastapi_lab1_env**).
-2. Activate the environment and install the required packages using `pip install -r requirements.txt`.
+```bash
+conda create -n fastapi_lab python=3.12 -y
+conda activate fastapi_lab
+pip install -r requirements.txt
+```
 
 ### Project structure
 
@@ -26,9 +48,10 @@ The workflow involves the following steps:
 mlops_labs
 └── fastapi_lab1
     ├── assets/
-    ├── fastapi_lab1_env/
+    ├── data/
+    │   └── pokemon.csv
     ├── model/
-    │   └── iris_model.pkl
+    │   └── pokemon_model.pkl
     ├── src/
     │   ├── __init__.py
     │   ├── data.py
@@ -44,18 +67,19 @@ Note:
 
 ## Running the Lab
 
-1. First step is to train a Decision Tree Classifier(Although you have **`model/iris_model.pkl`** when you cloned from the repo, let's create a new model). To do this, move into **src/** folder with
+1. First step is to train a Decision Tree Classifier. To do this, move into **src/** folder with
     ```bash
     cd src
     ```
-2. To train the Decision Tree Classifier, run:
+2. To train the Decision Tree Classifier, run (it prints precision/recall on the test split):
     ```bash
     python train.py
     ```
 3. To serve the trained model as an API, run:
     ```bash
-    uvicorn app:main --reload
+    uvicorn main:app --reload
     ```
+    Try Mewtwo's stats: `{"hp": 106, "attack": 110, "defense": 90, "sp_atk": 154, "sp_def": 90, "speed": 130}`. Then try Magikarp: `{"hp": 20, "attack": 10, "defense": 55, "sp_atk": 15, "sp_def": 20, "speed": 80}`.
 4. Testing endpoints - to view the documentation of your api model you can use [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) (or) [http://localhost:8000/docs](http://localhost:8000/docs) after you run you run your FastAPI app.
     
 ![API page](assets/docs.png)
@@ -87,31 +111,33 @@ You can also test out the results of your endpoints by interacting with them. Cl
 
 ### Data Models in FastAPI
 
-##### 1. IrisData class
+##### 1. PokemonStats class
 
 ```python
-class IrisData(BaseModel):
-    petal_length: float
-    sepal_length:float
-    petal_width:float
-    sepal_width:float
+class PokemonStats(BaseModel):
+    hp: float
+    attack: float
+    defense: float
+    sp_atk: float
+    sp_def: float
+    speed: float
 ```
 
-The **IrisData** class is a [Pydantic model](https://docs.pydantic.dev/latest/concepts/models/) which defines the expected structure of the data for a request body. When you use it as a type annotation for a route operation parameter, FastAPI will perform the following actions:
+The **PokemonStats** class is a [Pydantic model](https://docs.pydantic.dev/latest/concepts/models/) which defines the expected structure of the data for a request body. When you use it as a type annotation for a route operation parameter, FastAPI will perform the following actions:
 - **Request Body Reading:** FastAPI will read the request body as JSON.
 - **Data Conversion:** It will convert the corresponding types, if necessary.
 - **Data Validation:** It will validate the data. If the data is invalid, it will return a 422 Unprocessable Entity error response with details about what was incorrect.
 
-#### 2. IrisResponse class
+#### 2. VerdictResponse class
 
 ```python
-class IrisResponse(BaseModel):
-    response:int
+class VerdictResponse(BaseModel):
+    response: str
 ```
 
-The **IrisResponse** class is another Pydantic model that defines the structure of the response data for an endpoint. When you specify **response_model=IrisResponse** in a route operation, it tells FastAPI to:
-- **Serialize the Output**: Convert the output data to JSON format according to the IrisResponse model.
-- **Document the API**: Include the IrisResponse model in the generated API documentation, so API consumers know what to expect in the response.
+The **VerdictResponse** class is another Pydantic model that defines the structure of the response data for an endpoint. When you specify **response_model=VerdictResponse** in a route operation, it tells FastAPI to:
+- **Serialize the Output**: Convert the output data to JSON format according to the VerdictResponse model.
+- **Document the API**: Include the VerdictResponse model in the generated API documentation, so API consumers know what to expect in the response.
 
 ---
 
@@ -119,7 +145,7 @@ The **IrisResponse** class is another Pydantic model that defines the structure 
 
 1. **Request Body Reading**: When a client sends a request to a FastAPI endpoint, the request can include a body with data. For routes that expect data (commonly POST, PUT, or PATCH requests), this data is often in JSON format. FastAPI automatically reads the request body by checking the Content-Type header, which should be set to application/json for JSON payloads.
 2. **Data Conversion**: Once the request body is read, FastAPI utilizes Pydantic models to parse the JSON data. Pydantic attempts to construct an instance of the specified model using the data from the request body. During this instantiation, Pydantic converts the JSON data into the proper Python data types as declared in the model.
-    - For instance, if the JSON object has a field like petal_length with a value of "5.1" (a string), and the model expects a float, Pydantic will transform the string into a float. If conversion isn't possible (say, the value was "five point one"), Pydantic will raise a validation error.
+    - For instance, if the JSON object has a field like hp with a value of "106" (a string), and the model expects a float, Pydantic will transform the string into a float. If conversion isn't possible (say, the value was "over 9000"), Pydantic will raise a validation error.
 3. **Data Validation**: Pydantic checks that all required fields are present and that the values are of the correct type, adhering to any constraints defined in the model (such as string length or number range). If the validation passes, the endpoint has a verified Python object to work with. If validation fails (due to missing fields, incorrect types, or constraint violations), FastAPI responds with a 422 Unprocessable Entity status. This response includes a JSON body detailing the validation errors, aiding clients in correcting their request data.
 4. **Error Handling**: Error handling in FastAPI can be effectively managed using the HTTPException class. HTTPException is used to explicitly signal an HTTP error status code and return additional details about the error. When an HTTPException is raised within a route, FastAPI will catch the exception and use its content to form the HTTP response.
 - **Instantiation**: The HTTPException class is instantiated with at least two arguments: status_code and detail. The status_code argument is an integer that represents the HTTP status code (e.g., 404 for Not Found, 400 for Bad Request). The detail argument is a string or any JSON-encodable object that describes the error.

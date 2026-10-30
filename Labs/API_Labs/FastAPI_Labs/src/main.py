@@ -3,30 +3,34 @@ from pydantic import BaseModel
 from predict import predict_data
 
 
-app = FastAPI()
+app = FastAPI(title="Legendary or Mid?")
 
-class IrisData(BaseModel):
+class PokemonStats(BaseModel):
     """
-    Pydantic BaseModel representing iris flower measurements.
+    Pydantic BaseModel representing a Pokemon's base stats.
 
     Attributes:
-        petal_length (float): The length of the iris flower's petal in centimeters.
-        sepal_length (float): The length of the iris flower's sepal in centimeters.
-        petal_width (float): The width of the iris flower's petal in centimeters.
-        sepal_width (float): The width of the iris flower's sepal in centimeters.
+        hp (float): Hit points.
+        attack (float): Physical attack.
+        defense (float): Physical defense.
+        sp_atk (float): Special attack.
+        sp_def (float): Special defense.
+        speed (float): Speed.
     """
-    petal_length: float
-    sepal_length: float
-    petal_width: float
-    sepal_width: float
+    hp: float
+    attack: float
+    defense: float
+    sp_atk: float
+    sp_def: float
+    speed: float
 
-class IrisResponse(BaseModel):
-    response:int
+class VerdictResponse(BaseModel):
+    response: str
 
 
 
-"""Modern web apps use a technique named routing. This helps the user remember the URLs. 
-For instance, instead of having /booking.php they see /booking/. Instead of /account.asp?id=1234/ 
+"""Modern web apps use a technique named routing. This helps the user remember the URLs.
+For instance, instead of having /booking.php they see /booking/. Instead of /account.asp?id=1234/
 they’d see /account/1234/."""
 
 @app.get("/", status_code=status.HTTP_200_OK)
@@ -34,45 +38,39 @@ async def health_ping():
     """Concurrent (multiple tasks can run simultaneously)"""
     return {"status": "healthy"}
 
-@app.post("/predict", response_model=IrisResponse)
-async def predict_iris(iris_features: IrisData):
+@app.post("/predict", response_model=VerdictResponse)
+async def predict_pokemon(stats: PokemonStats):
     """
-    Predict the iris flower species based on provided features.
-    This endpoint accepts iris flower measurements and returns the predicted species class.
+    Judge whether a Pokemon is legendary or just mid based on its base stats.
     Args:
-        iris_features (IrisData): An IrisData object containing:
-            - sepal_length (float): Length of the sepal in cm
-            - sepal_width (float): Width of the sepal in cm
-            - petal_length (float): Length of the petal in cm
-            - petal_width (float): Width of the petal in cm
+        stats (PokemonStats): A PokemonStats object containing hp, attack, defense,
+            sp_atk, sp_def and speed.
     Returns:
-        IrisResponse: A response object containing:
-            - response (int): The predicted iris species class (0, 1, or 2)
+        VerdictResponse: A response object containing:
+            - response (str): "legendary" or "mid"
     Raises:
         HTTPException: Returns a 500 status code with error details if prediction fails.
     Example:
         POST /predict
         {
-            "sepal_length": 5.1,
-            "sepal_width": 3.5,
-            "petal_length": 1.4,
-            "petal_width": 0.2
+            "hp": 106, "attack": 110, "defense": 90,
+            "sp_atk": 154, "sp_def": 90, "speed": 130
         }
         Response:
         {
-            "response": 0
+            "response": "legendary"
         }
     """
     try:
-        features = [[iris_features.sepal_length, iris_features.sepal_width,
-                    iris_features.petal_length, iris_features.petal_width]]
+        features = [[stats.hp, stats.attack, stats.defense,
+                    stats.sp_atk, stats.sp_def, stats.speed]]
 
         prediction = predict_data(features)
-        return IrisResponse(response=int(prediction[0]))
-    
+        return VerdictResponse(response="legendary" if prediction[0] == 1 else "mid")
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    
 
 
-    
+
+

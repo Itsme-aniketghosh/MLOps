@@ -1,17 +1,18 @@
-import numpy as np
-from sklearn.datasets import load_iris
+import pandas as pd
 from sklearn.model_selection import train_test_split
+
+FEATURES = ["HP", "Attack", "Defense", "Sp. Atk", "Sp. Def", "Speed"]
 
 def load_data():
     """
-    Load the Iris dataset and return the features and target values.
+    Load the Pokemon stats dataset and return the features and target values.
     Returns:
-        X (numpy.ndarray): The features of the Iris dataset.
-        y (numpy.ndarray): The target values of the Iris dataset.
+        X (numpy.ndarray): Base stats of each Pokemon.
+        y (numpy.ndarray): 1 if the Pokemon is legendary, 0 if it is mid.
     """
-    iris = load_iris()
-    X = iris.data
-    y = iris.target
+    df = pd.read_csv("../data/pokemon.csv")
+    X = df[FEATURES].values
+    y = df["Legendary"].astype(int).values
     return X, y
 
 def split_data(X, y):
@@ -23,5 +24,5 @@ def split_data(X, y):
     Returns:
         X_train, X_test, y_train, y_test (tuple): The split dataset.
     """
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=12)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=12, stratify=y)
     return X_train, X_test, y_train, y_test
