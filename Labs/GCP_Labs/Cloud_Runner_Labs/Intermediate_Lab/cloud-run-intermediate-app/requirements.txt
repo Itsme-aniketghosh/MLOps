@@ -1,3 +1,4 @@
+# Fewer dependencies than a New Yorker has complaints
 flask
 gunicorn
 google-cloud-storage

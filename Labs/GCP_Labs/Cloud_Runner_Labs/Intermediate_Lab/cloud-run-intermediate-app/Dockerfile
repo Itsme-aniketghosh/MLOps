@@ -1,20 +1,12 @@
-FROM python:3.9
+# 27 million New York complaints, now in a box
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy and install dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy app code
 COPY . .
 
-# Expose port 8080 for Flask
-EXPOSE 8080
-
-# Use Gunicorn to run Flask (better for production)
-CMD ["gunicorn", "-b", "0.0.0.0:8080", "app:app"]
+# Cloud Run injects PORT (8080 by default)
+CMD exec gunicorn -b 0.0.0.0:${PORT:-8080} app:app
